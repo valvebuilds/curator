@@ -35,7 +35,7 @@ if uploaded_files:
         filenames.append(file.name)
 
         # CLIP embedding
-        inputs = processor(images=image, return_tensors="pt")
+        inputs = processor(images=[image], return_tensors="pt")
         with torch.no_grad():
             embed = model.get_image_features(**inputs)
         embeddings.append(embed[0].numpy())
