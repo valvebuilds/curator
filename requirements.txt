@@ -2,3 +2,6 @@ streamlit
 opencv-python
 numpy
 pillow
+torch
+transformers
+sklearn.cluster
