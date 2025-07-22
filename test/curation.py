@@ -32,6 +32,7 @@ if uploaded_files:
     for file in uploaded_files:
         try:
             image = Image.open(file).convert("RGB")
+            image = image.resize((224, 224)) 
             images.append(image)
             filenames.append(file.name)
 
