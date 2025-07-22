@@ -12,7 +12,7 @@ import cv2
 @st.cache_resource
 def load_model():
     model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-    processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+    processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", use_fast=True)
     return model, processor
 
 model, processor = load_model()
