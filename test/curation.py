@@ -30,21 +30,25 @@ if uploaded_files:
     scores = []
 
     for file in uploaded_files:
-        image = Image.open(file).convert("RGB")
-        images.append(image)
-        filenames.append(file.name)
+        try:
+            image = Image.open(file).convert("RGB")
+            images.append(image)
+            filenames.append(file.name)
 
-        # CLIP embedding
-        inputs = processor(images=[image], return_tensors="pt")
-        with torch.no_grad():
-            embed = model.get_image_features(**inputs)
-        embeddings.append(embed[0].numpy())
+            # CLIP embedding
+            inputs = processor(images=[image], return_tensors="pt")  # lista de 1 imagen
+            with torch.no_grad():
+                embed = model.get_image_features(**inputs)
+            embeddings.append(embed[0].numpy())
 
-        # Sharpness quality score
-        np_img = np.array(image)
-        gray = cv2.cvtColor(np_img, cv2.COLOR_RGB2GRAY)
-        lap = cv2.Laplacian(gray, cv2.CV_64F).var()
-        scores.append(lap)
+            # Sharpness score
+            np_img = np.array(image)
+            gray = cv2.cvtColor(np_img, cv2.COLOR_RGB2GRAY)
+            lap = cv2.Laplacian(gray, cv2.CV_64F).var()
+            scores.append(lap)
+
+        except Exception as e:
+            st.error(f"Error processing {file.name}: {e}")
 
     # Clustering
     k = 3
