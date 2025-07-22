@@ -64,7 +64,7 @@ if uploaded_files:
         cluster_imgs = [(img, name, score) for img, name, label, score in zip(images, filenames, labels, scores) if label == cluster]
         for i, (img, name, score) in enumerate(cluster_imgs):
             with cols[i % 3]:
-                st.image(img, caption=f"{name} | Score: {round(score, 2)}", use_column_width=True)
+                st.image(img, caption=f"{name} | Score: {round(score, 2)}", use_container_width=True)
 
     # Optional: Export results
     if st.button("Export Results CSV"):
