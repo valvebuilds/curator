@@ -13,6 +13,7 @@ hf-xet==1.1.5
 huggingface-hub==0.33.4
 idna==3.10
 Jinja2==3.1.6
+joblib==1.5.1
 jsonschema==4.25.0
 jsonschema-specifications==2025.4.1
 MarkupSafe==3.0.2
@@ -35,11 +36,14 @@ regex==2024.11.6
 requests==2.32.4
 rpds-py==0.26.0
 safetensors==0.5.3
+scikit-learn==1.7.1
+scipy==1.16.0
 six==1.17.0
 smmap==5.0.2
 streamlit==1.47.0
 sympy==1.14.0
 tenacity==9.1.2
+threadpoolctl==3.6.0
 tokenizers==0.21.2
 toml==0.10.2
 torch==2.7.1
