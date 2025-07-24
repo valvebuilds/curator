@@ -28,7 +28,12 @@ themes = [
 ]
 
 # Precompute theme embeddings
-theme_inputs = processor(text=themes, return_tensors="pt", padding=True)
+theme_inputs = processor(
+    themes,                  # pass as positional arg
+    return_tensors="pt", 
+    padding=True
+)
+
 with torch.no_grad():
     theme_embeddings = model.get_text_features(**theme_inputs)
     theme_embeddings = theme_embeddings / theme_embeddings.norm(dim=1, keepdim=True)
