@@ -28,11 +28,12 @@ themes = [
 ]
 
 # Precompute theme embeddings
-theme_inputs = processor(
-    themes,                  # pass as positional arg
-    return_tensors="pt", 
+theme_inputs = processor.tokenizer(
+    themes,
+    return_tensors="pt",
     padding=True
 )
+
 
 with torch.no_grad():
     theme_embeddings = model.get_text_features(**theme_inputs)
