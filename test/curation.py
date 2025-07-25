@@ -92,11 +92,11 @@ if uploaded_files:
         except Exception as e:
             st.error(f"Error processing {file.name}: {e}")
 
-    if len(embeddings) < 3:
-        st.warning("At least 3 images are required for clustering.")
+    if len(embeddings) < 5:
+        st.warning("At least 5 images are required for clustering.")
     else:
         # Clustering
-        k = 3
+        k = 5
         kmeans = KMeans(n_clusters=k, random_state=42)
         labels = kmeans.fit_predict(embeddings)
 
