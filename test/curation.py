@@ -27,17 +27,31 @@ all_themes = [
     "backstage moments", "color splash rebellion", "ritualistic light play"
 ]
 
-st.subheader("🎨 Select Preferred Themes")
-selected_themes = st.multiselect(
-    "Tap your favorite themes to personalize the classification.",
-    options=all_themes,
-    default=["dreamy nature scene", "vintage aesthetics", "surrealism and fantasy"]
-)
+st.subheader("🎨 Choose Your Themes")
 
-if not selected_themes:
-    st.warning("Please select at least one theme to proceed.")
+if "selected_themes" not in st.session_state:
+    st.session_state.selected_themes = set()
+
+cols = st.columns(3)
+for i, theme in enumerate(all_themes):
+    col = cols[i % 3]
+    with col:
+        if theme in st.session_state.selected_themes:
+            if st.button(f"✅ {theme}", key=f"{theme}_on"):
+                st.session_state.selected_themes.remove(theme)
+        else:
+            if st.button(f"➕ {theme}", key=f"{theme}_off"):
+                st.session_state.selected_themes.add(theme)
+
+# Convert set to list
+selected_themes = list(st.session_state.selected_themes)
+
+# Display current selection
+if selected_themes:
+    st.success(f"Selected themes: {', '.join(selected_themes)}")
+else:
+    st.warning("Please select at least one theme to continue.")
     st.stop()
-
 
 # Precompute theme embeddings
 theme_inputs = processor.tokenizer(
@@ -70,7 +84,7 @@ for i, theme in enumerate(all_themes):
             st.markdown(f"✅ **{theme}**", unsafe_allow_html=True)
         else:
             st.markdown(f"⬜ {theme}", unsafe_allow_html=True)
-            
+
 if uploaded_files:
     st.write(f"Uploaded {len(uploaded_files)} images. Processing...")
 
