@@ -75,16 +75,6 @@ def get_cluster_theme_label(image_features_cluster):
 st.title("Viewfinder: AI Image Curation")
 uploaded_files = st.file_uploader("Upload images", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
 
-# Simulate theme grid
-st.markdown("**Click below to select from the following themes:**")
-cols = st.columns(3)
-for i, theme in enumerate(all_themes):
-    with cols[i % 3]:
-        if theme in selected_themes:
-            st.markdown(f"✅ **{theme}**", unsafe_allow_html=True)
-        else:
-            st.markdown(f"⬜ {theme}", unsafe_allow_html=True)
-
 if uploaded_files:
     st.write(f"Uploaded {len(uploaded_files)} images. Processing...")
 
@@ -112,11 +102,11 @@ if uploaded_files:
         except Exception as e:
             st.error(f"Error processing {file.name}: {e}")
 
-    if len(embeddings) < 3:
+    if len(embeddings) < 5:
         st.warning("At least 3 images are required for clustering.")
     else:
         # Clustering
-        k = 3
+        k = 5
         kmeans = KMeans(n_clusters=k, random_state=42)
         labels = kmeans.fit_predict(embeddings)
 
