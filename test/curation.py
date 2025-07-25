@@ -24,7 +24,22 @@ themes = [
     "vintage aesthetics",
     "urban decay",
     "surrealism and fantasy",
-    "intimate close-up"
+    "intimate close-up",
+    "melancholic blue hour",
+    "high-contrast monochrome drama",
+    "warm golden nostalgia",
+    "neon-drenched nightscape",
+    "ritual and celebration",
+    "fog and silence",
+    "pastel minimalism",
+    "chaotic street energy",
+    "introspective solitude",
+    "ethereal underwater world",
+    "decaying grandeur",
+    "seasonal transitions",
+    "backstage moments",
+    "color splash rebellion",
+    "ritualistic light play"
 ]
 
 # Precompute theme embeddings
