@@ -17,48 +17,38 @@ def load_model():
 model, processor = load_model()
 
 # Theme prompts
-all_themes = [
-    "dreamy nature scene", "cinematic street shadows", "geometric colorful portraits",
-    "vintage aesthetics", "urban decay", "surrealism and fantasy", "intimate close-up",
-    "melancholic blue hour", "high-contrast monochrome drama", "warm golden nostalgia",
-    "neon-drenched nightscape", "ritual and celebration", "fog and silence",
-    "pastel minimalism", "chaotic street energy", "introspective solitude",
-    "ethereal underwater world", "decaying grandeur", "seasonal transitions",
-    "backstage moments", "color splash rebellion", "ritualistic light play"
+themes = [
+    "dreamy nature scene",
+    "cinematic street shadows",
+    "geometric colorful portraits",
+    "vintage aesthetics",
+    "urban decay",
+    "surrealism and fantasy",
+    "intimate close-up",
+    "melancholic blue hour",
+    "high-contrast monochrome drama",
+    "warm golden nostalgia",
+    "neon-drenched nightscape",
+    "ritual and celebration",
+    "fog and silence",
+    "pastel minimalism",
+    "chaotic street energy",
+    "introspective solitude",
+    "ethereal underwater world",
+    "decaying grandeur",
+    "seasonal transitions",
+    "backstage moments",
+    "color splash rebellion",
+    "ritualistic light play"
 ]
-
-st.subheader("🎨 Choose Your Themes")
-
-if "selected_themes" not in st.session_state:
-    st.session_state.selected_themes = set()
-
-cols = st.columns(3)
-for i, theme in enumerate(all_themes):
-    col = cols[i % 3]
-    with col:
-        if theme in st.session_state.selected_themes:
-            if st.button(f"✅ {theme}", key=f"{theme}_on"):
-                st.session_state.selected_themes.remove(theme)
-        else:
-            if st.button(f"➕ {theme}", key=f"{theme}_off"):
-                st.session_state.selected_themes.add(theme)
-
-# Convert set to list
-selected_themes = list(st.session_state.selected_themes)
-
-# Display current selection
-if selected_themes:
-    st.success(f"Selected themes: {', '.join(selected_themes)}")
-else:
-    st.warning("Please select at least one theme to continue.")
-    st.stop()
 
 # Precompute theme embeddings
 theme_inputs = processor.tokenizer(
-    selected_themes,
+    themes,
     return_tensors="pt",
     padding=True
 )
+
 
 with torch.no_grad():
     theme_embeddings = model.get_text_features(**theme_inputs)
@@ -69,10 +59,14 @@ def get_cluster_theme_label(image_features_cluster):
     cluster_embedding = cluster_embedding / cluster_embedding.norm()
     similarities = torch.matmul(theme_embeddings, cluster_embedding)
     top_idx = similarities.argmax().item()
-    return selected_themes[top_idx]
+    return themes[top_idx]
 
 # UI
 st.title("Viewfinder: AI Image Curation")
+
+st.subheader("🔢 Choose Cluster Size")
+cluster_size = st.selectbox("How many images per cluster?", options=[3, 5, 7], index=0)
+
 uploaded_files = st.file_uploader("Upload images", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
 
 if uploaded_files:
@@ -102,31 +96,43 @@ if uploaded_files:
         except Exception as e:
             st.error(f"Error processing {file.name}: {e}")
 
-    if len(embeddings) < 5:
+    if len(embeddings) < 3:
         st.warning("At least 3 images are required for clustering.")
     else:
-        # Clustering
-        k = 5
-        kmeans = KMeans(n_clusters=k, random_state=42)
-        labels = kmeans.fit_predict(embeddings)
+        # Calculate how many full clusters can be formed
+        num_full_clusters = len(embeddings) // cluster_size
+
+        if num_full_clusters < 1:
+            st.warning(f"Need at least {cluster_size} images to form one cluster.")
+            st.stop()
+
+        # Trim to only the images used in clustering
+        used_embeddings = embeddings[:num_full_clusters * cluster_size]
+        used_images = images[:num_full_clusters * cluster_size]
+        used_filenames = filenames[:num_full_clusters * cluster_size]
+        used_scores = scores[:num_full_clusters * cluster_size]
+
+        # Run KMeans
+        kmeans = KMeans(n_clusters=num_full_clusters, random_state=42)
+        labels = kmeans.fit_predict(used_embeddings)
+
 
         # Group embeddings by cluster
-        embeddings_tensor = torch.tensor(embeddings)
+        embeddings_tensor = torch.tensor(used_embeddings)
         cluster_theme_labels = []
-        for cluster in range(k):
+        for cluster in range(num_full_clusters):
             cluster_indices = [i for i, label in enumerate(labels) if label == cluster]
             cluster_embeddings = embeddings_tensor[cluster_indices]
             theme_label = get_cluster_theme_label(cluster_embeddings)
             cluster_theme_labels.append(theme_label)
 
-        # Display images per cluster with theme
         st.subheader("Clustered Images by Theme")
-        for cluster in range(k):
+        for cluster in range(num_full_clusters):
             st.markdown(f"### Cluster {cluster + 1} — **{cluster_theme_labels[cluster]}**")
             cols = st.columns(3)
             cluster_imgs = [
                 (img, name, score)
-                for img, name, label, score in zip(images, filenames, labels, scores)
+                for img, name, label, score in zip(used_images, used_filenames, labels, used_scores)
                 if label == cluster
             ]
             for i, (img, name, score) in enumerate(cluster_imgs):
@@ -136,10 +142,10 @@ if uploaded_files:
         # Export results
         if st.button("Export Results CSV"):
             df = pd.DataFrame({
-                "filename": filenames,
+                "filename": used_filenames,
                 "cluster": labels,
                 "theme": [cluster_theme_labels[label] for label in labels],
-                "quality_score": scores
+                "quality_score": used_scores
             })
-            df.to_csv("results.csv", index=False)
-            st.success("results.csv saved in app folder.") 
+        df.to_csv("results.csv", index=False)
+        st.success("results.csv saved in app folder.")
