@@ -16,7 +16,7 @@ def load_model():
 
 model, processor = load_model()
 
-# Define all available themes
+# Define available themes
 themes = [
     "dreamy nature scene", "cinematic street shadows", "geometric colorful portraits",
     "vintage aesthetics", "urban decay", "surrealism and fantasy", "intimate close-up",
@@ -28,17 +28,12 @@ themes = [
 ]
 
 # Precompute theme embeddings
-theme_inputs = processor.tokenizer(
-    themes,
-    return_tensors="pt",
-    padding=True
-)
-
+theme_inputs = processor.tokenizer(themes, return_tensors="pt", padding=True)
 with torch.no_grad():
     theme_embeddings = model.get_text_features(**theme_inputs)
     theme_embeddings = theme_embeddings / theme_embeddings.norm(dim=1, keepdim=True)
 
-# Theme label assignment
+# Theme label function
 def get_cluster_theme_label(image_features_cluster):
     cluster_embedding = image_features_cluster.mean(dim=0)
     cluster_embedding = cluster_embedding / cluster_embedding.norm()
@@ -48,6 +43,12 @@ def get_cluster_theme_label(image_features_cluster):
 
 # UI
 st.title("📸 Viewfinder: AI Image Clustering & Theme Classification")
+
+# Step 1: Select cluster size
+st.subheader("🔢 Choose Cluster Size")
+cluster_size = st.selectbox("How many images per cluster?", options=[3, 5, 7], index=0)
+
+# Step 2: Upload images
 uploaded_files = st.file_uploader("Upload images", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
 
 if uploaded_files:
@@ -77,27 +78,22 @@ if uploaded_files:
         except Exception as e:
             st.error(f"Error processing {file.name}: {e}")
 
-    # Select cluster size
-    st.subheader("🔢 Choose Cluster Size")
-    cluster_size = st.selectbox("How many images per cluster?", options=[3, 5, 7], index=0)
-
-    # Determine number of full clusters
     num_images = len(embeddings)
     num_full_clusters = num_images // cluster_size
 
     if num_full_clusters < 1:
-        st.warning(f"Need at least {cluster_size} images to form one cluster.")
+        st.warning(f"Need at least {cluster_size} images to form one full cluster.")
     else:
         used_embeddings = embeddings[:num_full_clusters * cluster_size]
         used_images = images[:num_full_clusters * cluster_size]
         used_filenames = filenames[:num_full_clusters * cluster_size]
         used_scores = scores[:num_full_clusters * cluster_size]
 
-        # Run KMeans clustering
+        # Clustering
         kmeans = KMeans(n_clusters=num_full_clusters, random_state=42)
         labels = kmeans.fit_predict(used_embeddings)
 
-        # Assign themes to clusters
+        # Assign themes
         embeddings_tensor = torch.tensor(used_embeddings)
         cluster_theme_labels = []
         for cluster in range(num_full_clusters):
@@ -120,7 +116,7 @@ if uploaded_files:
                 with cols[i % 3]:
                     st.image(img, caption=f"{name} | Score: {round(score, 2)}", use_container_width=True)
 
-        # Export to CSV
+        # Export CSV
         if st.button("Export Results CSV"):
             df = pd.DataFrame({
                 "filename": used_filenames,
