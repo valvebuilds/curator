@@ -1,128 +1,104 @@
-import streamlit as st
-from PIL import Image
-import numpy as np
-import torch
-from transformers import CLIPProcessor, CLIPModel
-from sklearn.cluster import KMeans
+import os
 import cv2
-import pandas as pd
+import numpy as np
+from sklearn.cluster import KMeans
+from colormath.color_objects import LabColor, sRGBColor
+from colormath.color_conversions import convert_color
+from colormath.color_diff import delta_e_cie2000
+from itertools import combinations
+from PIL import Image
 
-# Load model and processor
-@st.cache_resource
-def load_model():
-    model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-    processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", use_fast=True)
-    return model, processor
+# SETTINGS
+NUM_IMAGES_TO_SELECT = 9
+PALETTE_SIZE = 5
+IMAGE_DIR = "your_image_folder_path"
 
-model, processor = load_model()
+# --- 1. Helper Functions ---
+def resize_image(img, size=(200, 200)):
+    return cv2.resize(img, size, interpolation=cv2.INTER_AREA)
 
-# Define available themes
-themes = [
-    "dreamy nature scene", "cinematic street shadows", "geometric colorful portraits",
-    "vintage aesthetics", "urban decay", "surrealism and fantasy", "intimate close-up",
-    "melancholic blue hour", "high-contrast monochrome drama", "warm golden nostalgia",
-    "neon-drenched nightscape", "ritual and celebration", "fog and silence",
-    "pastel minimalism", "chaotic street energy", "introspective solitude",
-    "ethereal underwater world", "decaying grandeur", "seasonal transitions",
-    "backstage moments", "color splash rebellion", "ritualistic light play"
-]
+def extract_palette(img, k=5):
+    img = resize_image(img)
+    img = img.reshape((-1, 3))
+    kmeans = KMeans(n_clusters=k, random_state=42).fit(img)
+    return kmeans.cluster_centers_
 
-# Precompute theme embeddings
-theme_inputs = processor.tokenizer(themes, return_tensors="pt", padding=True)
-with torch.no_grad():
-    theme_embeddings = model.get_text_features(**theme_inputs)
-    theme_embeddings = theme_embeddings / theme_embeddings.norm(dim=1, keepdim=True)
+def rgb_to_lab(rgb):
+    r, g, b = [x / 255.0 for x in rgb]
+    return convert_color(sRGBColor(r, g, b), LabColor)
 
-# Theme label function
-def get_cluster_theme_label(image_features_cluster):
-    cluster_embedding = image_features_cluster.mean(dim=0)
-    cluster_embedding = cluster_embedding / cluster_embedding.norm()
-    similarities = torch.matmul(theme_embeddings, cluster_embedding)
-    top_idx = similarities.argmax().item()
-    return themes[top_idx]
+def average_palette_distance(palette1, palette2):
+    distances = []
+    for color1 in palette1:
+        lab1 = rgb_to_lab(color1)
+        for color2 in palette2:
+            lab2 = rgb_to_lab(color2)
+            distances.append(delta_e_cie2000(lab1, lab2))
+    return np.mean(distances)
 
-# UI
-st.title("📸 Viewfinder: AI Image Clustering & Theme Classification")
+# --- 2. Load Images and Extract Palettes ---
+def load_images_and_palettes(path):
+    image_paths = [os.path.join(path, f) for f in os.listdir(path)
+                   if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+    data = []
+    for img_path in image_paths:
+        img = cv2.imread(img_path)
+        if img is None:
+            continue
+        palette = extract_palette(img, k=PALETTE_SIZE)
+        data.append({
+            "path": img_path,
+            "palette": palette
+        })
+    return data
 
-# Step 1: Select cluster size
-st.subheader("🔢 Choose Cluster Size")
-cluster_size = st.selectbox("How many images per cluster?", options=[3, 5, 7], index=0)
+# --- 3. Score Combinations of Images ---
+def score_combination(images_subset):
+    total_distance = 0
+    for img1, img2 in combinations(images_subset, 2):
+        dist = average_palette_distance(img1["palette"], img2["palette"])
+        total_distance += dist
+    return total_distance
 
-# Step 2: Upload images
-uploaded_files = st.file_uploader("Upload images", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
+# --- 4. Select Optimal Grid ---
+def select_best_grid(images_data, select_count=9):
+    from random import sample
+    best_score = -np.inf
+    best_combination = None
+    trials = 3000  # adjustable: balance between speed and quality
 
-if uploaded_files:
-    st.write(f"Uploaded {len(uploaded_files)} images. Processing...")
+    for _ in range(trials):
+        candidates = sample(images_data, select_count)
+        score = score_combination(candidates)
+        if score > best_score:
+            best_score = score
+            best_combination = candidates
+    return best_combination
 
-    images = []
-    filenames = []
-    embeddings = []
-    scores = []
+# --- 5. Generate and Save Grid ---
+def save_grid(selected_images, output_path="grid_output.jpg", cell_size=(300, 300)):
+    rows = cols = int(np.sqrt(len(selected_images)))
+    grid_img = Image.new("RGB", (cell_size[0]*cols, cell_size[1]*rows))
 
-    for file in uploaded_files:
-        try:
-            image = Image.open(file).convert("RGB")
-            image = image.resize((224, 224))  # Resize for CLIP compatibility
-            images.append(image)
-            filenames.append(file.name)
+    for idx, img_data in enumerate(selected_images):
+        img = Image.open(img_data["path"]).convert("RGB")
+        img = img.resize(cell_size)
+        x = (idx % cols) * cell_size[0]
+        y = (idx // cols) * cell_size[1]
+        grid_img.paste(img, (x, y))
 
-            inputs = processor(images=[image], return_tensors="pt")
-            with torch.no_grad():
-                embed = model.get_image_features(**inputs)
-            embeddings.append(embed[0].numpy())
+    grid_img.save(output_path)
+    print(f"Saved grid to: {output_path}")
 
-            np_img = np.array(image)
-            gray = cv2.cvtColor(np_img, cv2.COLOR_RGB2GRAY)
-            lap = cv2.Laplacian(gray, cv2.CV_64F).var()
-            scores.append(lap)
-        except Exception as e:
-            st.error(f"Error processing {file.name}: {e}")
+# --- 6. Full Pipeline ---
+if __name__ == "__main__":
+    print("Loading and analyzing images...")
+    all_images = load_images_and_palettes(IMAGE_DIR)
 
-    num_images = len(embeddings)
-    num_full_clusters = num_images // cluster_size
+    if len(all_images) < NUM_IMAGES_TO_SELECT:
+        raise ValueError("Not enough images to select from.")
 
-    if num_full_clusters < 1:
-        st.warning(f"Need at least {cluster_size} images to form one full cluster.")
-    else:
-        used_embeddings = embeddings[:num_full_clusters * cluster_size]
-        used_images = images[:num_full_clusters * cluster_size]
-        used_filenames = filenames[:num_full_clusters * cluster_size]
-        used_scores = scores[:num_full_clusters * cluster_size]
+    print(f"Selecting best {NUM_IMAGES_TO_SELECT} images based on color diversity and harmony...")
+    best_images = select_best_grid(all_images, select_count=NUM_IMAGES_TO_SELECT)
 
-        # Clustering
-        kmeans = KMeans(n_clusters=num_full_clusters, random_state=42)
-        labels = kmeans.fit_predict(used_embeddings)
-
-        # Assign themes
-        embeddings_tensor = torch.tensor(used_embeddings)
-        cluster_theme_labels = []
-        for cluster in range(num_full_clusters):
-            cluster_indices = [i for i, label in enumerate(labels) if label == cluster]
-            cluster_embeddings = embeddings_tensor[cluster_indices]
-            theme_label = get_cluster_theme_label(cluster_embeddings)
-            cluster_theme_labels.append(theme_label)
-
-        # Display results
-        st.subheader("🎨 Clustered Images by Theme")
-        for cluster in range(num_full_clusters):
-            st.markdown(f"### Cluster {cluster + 1} — **{cluster_theme_labels[cluster]}**")
-            cols = st.columns(3)
-            cluster_imgs = [
-                (img, name, score)
-                for img, name, label, score in zip(used_images, used_filenames, labels, used_scores)
-                if label == cluster
-            ]
-            for i, (img, name, score) in enumerate(cluster_imgs):
-                with cols[i % 3]:
-                    st.image(img, caption=f"{name} | Score: {round(score, 2)}", use_container_width=True)
-
-        # Export CSV
-        if st.button("Export Results CSV"):
-            df = pd.DataFrame({
-                "filename": used_filenames,
-                "cluster": labels,
-                "theme": [cluster_theme_labels[label] for label in labels],
-                "quality_score": used_scores
-            })
-            df.to_csv("results.csv", index=False)
-            st.success("results.csv saved in app folder.")
+    save_grid(best_images)
