@@ -53,6 +53,6 @@ if uploaded_files:
     cols = st.columns(3)
     for i, img_data in enumerate(selected_images):
         with cols[i % 3]:
-            st.image(img_data["image"], caption=img_data["filename"], use_column_width="always")
+            st.image(img_data["image"], caption=img_data["filename"], use_container_width="always")
 else:
     st.info("📤 Sube al menos una imagen para comenzar.")
