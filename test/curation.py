@@ -1,58 +1,76 @@
 import streamlit as st
 from PIL import Image
 import numpy as np
-import cv2
-import os
 from sklearn.cluster import KMeans
-import tempfile
+from sklearn.metrics import pairwise_distances
+from colormath.color_objects import LabColor, sRGBColor
+from colormath.color_conversions import convert_color
+from colormath.color_diff import delta_e_cie2000
+import io
 
-# --- 1. Config ---
-NUM_PALETTE_COLORS = 5
-NUM_IMAGES_TO_SELECT = 9
+st.set_page_config(layout="wide")
+st.title("🎨 Artistic Photo Color Palette Matcher")
 
-st.set_page_config(page_title="Color Palette Matcher", layout="wide")
-st.title("🎨 Color Palette Matcher for Artistic Photography")
+# --- Helper Functions ---
 
-# --- 2. Helper: Extract Dominant Colors from Image ---
-def extract_dominant_colors(image, k=NUM_PALETTE_COLORS):
-    image = image.resize((100, 100))  # speed up
-    img_np = np.array(image)
-    img_np = img_np.reshape((-1, 3))
-    kmeans = KMeans(n_clusters=k, random_state=42).fit(img_np)
-    return kmeans.cluster_centers_.astype(int)  # shape: (k, 3)
+def extract_dominant_colors(image, k=5):
+    image = image.resize((100, 100))  # Downsample for speed
+    img_array = np.array(image).reshape(-1, 3)
+    kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto')
+    labels = kmeans.fit_predict(img_array)
+    counts = np.bincount(labels)
+    centers = kmeans.cluster_centers_.astype(int)
+    sorted_colors = centers[np.argsort(-counts)]
+    return sorted_colors  # (k, 3)
 
-# --- 3. Helper: Compute Palette Similarity ---
-def palette_distance(p1, p2):
-    # Flatten and use Euclidean distance
-    return np.linalg.norm(p1.flatten() - p2.flatten())
+def rgb_to_lab(color):
+    rgb = sRGBColor(*color, is_upscaled=True)
+    lab = convert_color(rgb, LabColor)
+    return lab
 
-# --- 4. Upload images ---
-uploaded_files = st.file_uploader("Sube tus imágenes", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
+def compute_palette_distance(palette1, palette2):
+    lab1 = [rgb_to_lab(c) for c in palette1]
+    lab2 = [rgb_to_lab(c) for c in palette2]
+    dists = [min([delta_e_cie2000(c1, c2) for c2 in lab2]) for c1 in lab1]
+    return np.mean(dists)
 
-if uploaded_files:
-    st.write(f"Se subieron {len(uploaded_files)} imágenes. Analizando...")
+# --- File Upload ---
+uploaded_files = st.file_uploader("Sube tus imágenes (30+ JPG/PNG)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-    # --- 5. Save to temp dir + Extract color palette ---
-    image_data = []
-    for uploaded in uploaded_files:
-        img = Image.open(uploaded).convert("RGB")
-        palette = extract_dominant_colors(img)
-        image_data.append({"filename": uploaded.name, "image": img, "palette": palette})
+if uploaded_files and len(uploaded_files) >= 9:
+    with st.spinner("Procesando imágenes..."):
 
-    # --- 6. Compute palette similarity matrix ---
-    reference_palette = image_data[0]["palette"]
-    for item in image_data:
-        item["distance"] = palette_distance(reference_palette, item["palette"])
+        images = []
+        for file in uploaded_files:
+            img = Image.open(file).convert("RGB")
+            palette = extract_dominant_colors(img, k=5)
+            images.append({
+                "image": img,
+                "palette": palette,
+                "filename": file.name
+            })
 
-    # --- 7. Select 9 most similar images ---
-    sorted_images = sorted(image_data, key=lambda x: x["distance"])
-    selected_images = sorted_images[:NUM_IMAGES_TO_SELECT]
+        # Compute average palette of all images
+        all_palettes = np.array([img["palette"].mean(axis=0) for img in images])
+        mean_palette = all_palettes.mean(axis=0)
 
-    # --- 8. Display as 3x3 grid ---
-    st.markdown("### 🎯 Imágenes con paletas similares")
-    cols = st.columns(3)
-    for i, img_data in enumerate(selected_images):
-        with cols[i % 3]:
-            st.image(img_data["image"], caption=img_data["filename"], use_container_width="always")
+        # Compute distance to mean palette
+        for img in images:
+            img["distance"] = compute_palette_distance(img["palette"], [mean_palette])
+
+        # Sort by similarity
+        images.sort(key=lambda x: x["distance"])
+        top_images = images[:9]
+
+        st.success("✅ ¡Listo! Mostrando el grid de imágenes más armoniosas por color:")
+
+        # Display 3x3 grid
+        for i in range(0, 9, 3):
+            cols = st.columns(3)
+            for j in range(3):
+                with cols[j]:
+                    img_data = top_images[i + j]
+                    st.image(img_data["image"], caption=img_data["filename"], use_column_width=True)
+
 else:
-    st.info("📤 Sube al menos una imagen para comenzar.")
+    st.warning("Por favor sube al menos 9 imágenes para generar el grid.")
