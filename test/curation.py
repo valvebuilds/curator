@@ -5,20 +5,13 @@ from sklearn.cluster import KMeans
 from colorspacious import cspace_convert
 from PIL import Image
 import itertools
-import math
 import random
-import os
 import tempfile
 
 # ---------- UTILITIES ---------- #
 
 def rgb_to_hsv(rgb):
     return cv2.cvtColor(np.uint8([[rgb]]), cv2.COLOR_RGB2HSV)[0][0] / [180, 255, 255]
-
-def rgb_to_lab(rgb):
-    rgb_arr = np.uint8([[rgb]])
-    lab = cv2.cvtColor(rgb_arr, cv2.COLOR_RGB2LAB)
-    return lab[0][0]
 
 def hue_distance(h1, h2):
     return min(abs(h1 - h2), 1 - abs(h1 - h2)) * 360
@@ -27,25 +20,18 @@ def color_temperature(rgb):
     r, g, b = rgb
     return 'warm' if r > b else 'cool'
 
-# ---------- COLOR EXTRACTION ---------- #
-
 def extract_color_palette(img, n_colors=5):
     image_np = np.array(img.convert('RGB').resize((100, 100)))
     img_data = image_np.reshape((-1, 3))
-    kmeans = KMeans(n_clusters=n_colors, random_state=42)
+    kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init='auto')
     kmeans.fit(img_data)
     dominant_colors = kmeans.cluster_centers_.astype(int)
 
     hsv_colors = [rgb_to_hsv(tuple(rgb)) for rgb in dominant_colors]
-    lab_colors = [rgb_to_lab(tuple(rgb)) for rgb in dominant_colors]
-
     return {
         'rgb': [tuple(c) for c in dominant_colors],
-        'hsv': hsv_colors,
-        'lab': lab_colors
+        'hsv': hsv_colors
     }
-
-# ---------- SCORING ---------- #
 
 def calculate_harmony_score(palettes):
     hue_diffs = []
@@ -69,30 +55,11 @@ def calculate_harmony_score(palettes):
     harmony_score = 1.0 / (1 + mean_hue_diff + mean_sat_diff) + temperature_score
     return round(harmony_score, 4)
 
-def calculate_grid_harmony(images):
+def score_grid(images):
     palettes = [extract_color_palette(img) for img in images]
     return calculate_harmony_score(palettes)
 
-# ---------- OPTIMIZATION ---------- #
-
-def score_grid(images):
-    return calculate_grid_harmony(images)
-
-def optimize_grid(images, iterations=100):
-    best_layout = images[:]
-    best_score = score_grid(images)
-
-    for _ in range(iterations):
-        shuffled = images[:]
-        random.shuffle(shuffled)
-        score = score_grid(shuffled)
-        if score > best_score:
-            best_score = score
-            best_layout = shuffled
-
-    return best_layout, best_score
-
-def create_grid_image(images, grid_size=(3,3), image_size=(200, 200)):
+def create_grid_image(images, grid_size=(3, 3), image_size=(200, 200)):
     rows, cols = grid_size
     grid_img = Image.new('RGB', (cols * image_size[0], rows * image_size[1]))
 
@@ -103,37 +70,55 @@ def create_grid_image(images, grid_size=(3,3), image_size=(200, 200)):
 
     return grid_img
 
+def find_top_layouts(all_images, sample_size=9, max_attempts=100):
+    if len(all_images) < sample_size:
+        return []
+
+    seen = set()
+    top_layouts = []
+
+    for _ in range(max_attempts):
+        candidate = tuple(random.sample(all_images, sample_size))
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+
+        score = score_grid(candidate)
+        top_layouts.append((score, list(candidate)))
+        top_layouts = sorted(top_layouts, key=lambda x: -x[0])[:3]  # keep top 3
+
+    return top_layouts
+
 # ---------- STREAMLIT APP ---------- #
 
-st.set_page_config(page_title="Color Grid Validator", layout="wide")
-st.title("🎨 Social Media Grid Color Harmony Validator")
-st.markdown("Upload 9 images to evaluate and optimize your Instagram-style grid based on color harmony.")
+st.set_page_config(page_title="Grid Harmony Optimizer", layout="wide")
+st.title("🎨 Choose Your Most Harmonious 9-Image Grid")
 
-uploaded_files = st.file_uploader("Upload exactly 9 images", type=["jpg", "png"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("Upload at least 9 images", type=["jpg", "png"], accept_multiple_files=True)
 
-if uploaded_files and len(uploaded_files) == 9:
-    st.subheader("Original Grid Preview")
-    images = [Image.open(file) for file in uploaded_files]
-    original_grid = create_grid_image(images)
-    original_score = score_grid(images)
-    st.image(original_grid, caption=f"Harmony Score: {original_score}", use_column_width=True)
+if uploaded_files and len(uploaded_files) >= 9:
+    st.success(f"{len(uploaded_files)} images uploaded successfully.")
+    images = [Image.open(file).convert("RGB") for file in uploaded_files]
 
-    st.subheader("Optimizing Layout...")
-    best_layout, best_score = optimize_grid(images, iterations=50)
-    optimized_grid = create_grid_image(best_layout)
-    st.image(optimized_grid, caption=f"Optimized Harmony Score: {best_score}", use_column_width=True)
+    if st.button("🔍 Find Best 9-Image Grid Layouts"):
+        with st.spinner("Analyzing color harmony..."):
+            top_results = find_top_layouts(images, sample_size=9, max_attempts=150)
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-        optimized_grid.save(tmp.name)
-        st.download_button(
-            label="Download Optimized Grid",
-            data=open(tmp.name, "rb"),
-            file_name="optimized_grid.jpg",
-            mime="image/jpeg"
-        )
-
-elif uploaded_files:
-    st.warning("Please upload exactly **9** images to fill a 3x3 grid.")
-
+        if top_results:
+            st.subheader("Top Layout Suggestions")
+            for idx, (score, layout) in enumerate(top_results, 1):
+                grid_img = create_grid_image(layout)
+                st.image(grid_img, caption=f"Layout {idx} - Harmony Score: {score}", use_column_width=True)
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+                    grid_img.save(tmp.name)
+                    st.download_button(
+                        label=f"Download Layout {idx}",
+                        data=open(tmp.name, "rb"),
+                        file_name=f"grid_layout_{idx}.jpg",
+                        mime="image/jpeg",
+                        key=f"download_{idx}"
+                    )
+        else:
+            st.error("Could not generate layouts. Try uploading more diverse images.")
 else:
-    st.info("👆 Upload your image set to get started.")
+    st.info("Please upload at least 9 images to begin.")
