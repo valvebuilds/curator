@@ -7,6 +7,9 @@ from colormath.color_objects import LabColor, sRGBColor
 from colormath.color_conversions import convert_color
 from colormath.color_diff import delta_e_cie2000
 import io
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+
 
 st.set_page_config(layout="wide")
 st.title("🎨 Artistic Photo Color Palette Matcher")
