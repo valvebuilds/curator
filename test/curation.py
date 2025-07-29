@@ -7,6 +7,8 @@ from PIL import Image
 import itertools
 import random
 import tempfile
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 # ---------- UTILITIES ---------- #
 
