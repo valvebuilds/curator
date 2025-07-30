@@ -1,3 +1,10 @@
+import warnings
+import sys
+
+# Suppress all SyntaxWarnings globally (must be done before any other imports)
+if not sys.warnoptions:
+    warnings.simplefilter("ignore", SyntaxWarning)
+
 import streamlit as st
 import cv2
 import numpy as np
@@ -7,8 +14,6 @@ from PIL import Image
 import itertools
 import random
 import tempfile
-import warnings
-warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 # ---------- UTILITIES ---------- #
 
