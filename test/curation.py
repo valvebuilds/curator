@@ -1,10 +1,13 @@
+import os
 import warnings
 import sys
 
-# Suppress all SyntaxWarnings globally (must be done before any other imports)
+# ✅ Disable inotify file watchers (fix for Streamlit Cloud)
+os.environ["STREAMLIT_WATCHDOG_MODE"] = "poll"
+
+# ✅ Suppress SyntaxWarnings early
 if not sys.warnoptions:
     warnings.simplefilter("ignore", SyntaxWarning)
-
 import streamlit as st
 import cv2
 import numpy as np
